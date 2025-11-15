@@ -98,9 +98,10 @@ class DownloadItem:
         self.status_icon.configure(text=icons.get(status, "⏸"))
         for btn in [self.pause_btn, self.resume_btn, self.cancel_btn, self.retry_btn, self.open_location_btn]: btn.pack_forget()
         if status == "Completed": self.open_location_btn.pack(side="left", padx=2)
-        elif status == "Error": self.retry_btn.pack(side="left", padx=2)
-        elif status == "Paused": self.resume_btn.pack(side="left", padx=2)
-        elif status == "Downloading": self.pause_btn.pack(side="left", padx=2)
+        elif status == "Error": self.retry_btn.pack(side="left", padx=2); self.cancel_btn.pack(side="left", padx=2)
+        elif status == "Paused": self.resume_btn.pack(side="left", padx=2); self.cancel_btn.pack(side="left", padx=2)
+        elif status == "Downloading": self.pause_btn.pack(side="left", padx=2); self.cancel_btn.pack(side="left", padx=2)
+        elif status == "Waiting": self.cancel_btn.pack(side="left", padx=2)
 
 class PlaylistSelectionWindow:
     def __init__(self, parent, playlist_url, app_instance):
@@ -140,7 +141,8 @@ class PlaylistSelectionWindow:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(self.playlist_url, download=False)
             except Exception as e:
-                if 'cookie' in str(e).lower() or 'cookiesfrombrowser' in str(e).lower():
+                error_str = str(e).lower()
+                if 'cookie' in error_str or 'cookiesfrombrowser' in error_str or 'dpapi' in error_str or 'decrypt' in error_str or 'cookieloaderror' in error_str:
                     ydl_opts.pop('cookiesfrombrowser', None)
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         info = ydl.extract_info(self.playlist_url, download=False)
@@ -459,7 +461,8 @@ class YouTubeDownloader:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
             except Exception as e:
-                if 'cookie' in str(e).lower() or 'cookiesfrombrowser' in str(e).lower():
+                error_str = str(e).lower()
+                if 'cookie' in error_str or 'cookiesfrombrowser' in error_str or 'dpapi' in error_str or 'decrypt' in error_str or 'cookieloaderror' in error_str:
                     ydl_opts.pop('cookiesfrombrowser', None)
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         info = ydl.extract_info(url, download=False)
@@ -572,7 +575,8 @@ class YouTubeDownloader:
             download_item.ydl = yt_dlp.YoutubeDL(ydl_opts)
             info = download_item.ydl.extract_info(download_item.url, download=False)
         except Exception as e:
-            if 'cookie' in str(e).lower() or 'cookiesfrombrowser' in str(e).lower():
+            error_str = str(e).lower()
+            if 'cookie' in error_str or 'cookiesfrombrowser' in error_str or 'dpapi' in error_str or 'decrypt' in error_str or 'cookieloaderror' in error_str:
                 ydl_opts.pop('cookiesfrombrowser', None)
                 download_item.ydl = yt_dlp.YoutubeDL(ydl_opts)
                 info = download_item.ydl.extract_info(download_item.url, download=False)
@@ -655,7 +659,8 @@ def download_from_cli(url, download_path=None):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
     except Exception as e:
-        if 'cookie' in str(e).lower() or 'cookiesfrombrowser' in str(e).lower():
+        error_str = str(e).lower()
+        if 'cookie' in error_str or 'cookiesfrombrowser' in error_str or 'dpapi' in error_str or 'decrypt' in error_str or 'cookieloaderror' in error_str:
             ydl_opts.pop('cookiesfrombrowser', None)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
         else: raise
