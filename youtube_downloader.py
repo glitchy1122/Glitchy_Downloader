@@ -135,6 +135,7 @@ class PlaylistSelectionWindow:
     def fetch_playlist(self):
         try:
             ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': True, 'extractor_args': {'youtube': {'player_client': ['android']}}}
+            self.app._add_cookie_options(ydl_opts)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(self.playlist_url, download=False)
                 self.playlist_info = {'title': info.get('title', 'Playlist'), 'entries': info.get('entries', [])}
@@ -422,6 +423,9 @@ class YouTubeDownloader:
             self.download_path = folder
             self.path_entry.delete(0, "end")
             self.path_entry.insert(0, folder)
+    def _add_cookie_options(self, ydl_opts):
+        ydl_opts['cookiesfrombrowser'] = ('chrome',)
+    
     def _extract_video_id(self, url):
         try:
             if 'youtu.be/' in url: return url.split('youtu.be/')[1].split('?')[0].split('&')[0]
@@ -443,6 +447,7 @@ class YouTubeDownloader:
         try:
             video_id = self._extract_video_id(url)
             ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'noplaylist': True, 'extractor_args': {'youtube': {'player_client': ['android']}}}
+            self._add_cookie_options(ydl_opts)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
                 thumbnail_url = info.get('thumbnail', '') or (info.get('thumbnails', [{}])[0].get('url', '') if info.get('thumbnails') else '')
@@ -534,6 +539,7 @@ class YouTubeDownloader:
         if download_item.cancelled: return
         os.makedirs(download_item.download_path, exist_ok=True)
         ydl_opts = {'outtmpl': os.path.join(download_item.download_path, download_item.file_pattern), 'progress_hooks': [lambda d: self.progress_hook(d, download_item)], 'noplaylist': True, 'concurrent_fragment_downloads': 4, 'http_chunk_size': 10485760}
+        self._add_cookie_options(ydl_opts)
         if download_item.speed_limit > 0: ydl_opts['ratelimit'] = int(download_item.speed_limit * 1024 * 1024)
         if download_item.download_subtitles: ydl_opts.update({'writesubtitles': True, 'writeautomaticsub': True, 'subtitleslangs': ['en', 'en-US', 'en-GB'], 'subtitlesformat': 'srt'})
         quality = download_item.quality
@@ -621,6 +627,7 @@ def download_from_cli(url, download_path=None):
         if 'youtu.be/' in url: url = f"https://www.youtube.com/watch?v={url.split('youtu.be/')[1].split('?')[0].split('&')[0]}"
         elif 'watch?v=' in url: url = f"https://www.youtube.com/watch?v={url.split('watch?v=')[1].split('&')[0].split('?')[0]}"
     ydl_opts = {'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'), 'format': 'best[ext=mp4]/best', 'noplaylist': True, 'concurrent_fragment_downloads': 4, 'http_chunk_size': 10485760}
+    ydl_opts['cookiesfrombrowser'] = ('chrome',)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
 
 def main():
