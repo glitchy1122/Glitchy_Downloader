@@ -135,18 +135,29 @@ class PlaylistSelectionWindow:
     
     def fetch_playlist(self):
         try:
-            ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': True, 'extractor_args': {'youtube': {'player_client': ['android']}}}
+            ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': True}
             self.app._add_cookie_options(ydl_opts)
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(self.playlist_url, download=False)
-            except Exception as e:
-                error_str = str(e).lower()
-                if 'cookie' in error_str or 'cookiesfrombrowser' in error_str or 'dpapi' in error_str or 'decrypt' in error_str or 'cookieloaderror' in error_str:
-                    ydl_opts.pop('cookiesfrombrowser', None)
+            player_clients = [['web'], ['android'], ['ios'], ['web', 'android']]
+            info = None
+            for clients in player_clients:
+                try:
+                    ydl_opts['extractor_args'] = {'youtube': {'player_client': clients}}
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         info = ydl.extract_info(self.playlist_url, download=False)
-                else: raise
+                    break
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if 'cookie' in error_str or 'cookiesfrombrowser' in error_str or 'dpapi' in error_str or 'decrypt' in error_str or 'cookieloaderror' in error_str:
+                        ydl_opts.pop('cookiesfrombrowser', None)
+                        try:
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                info = ydl.extract_info(self.playlist_url, download=False)
+                            break
+                        except: pass
+                    elif 'bot' in error_str or 'sign in' in error_str:
+                        continue
+                    elif info is None: raise
+            if info is None: raise Exception("Failed to extract playlist info")
             self.playlist_info = {'title': info.get('title', 'Playlist'), 'entries': info.get('entries', [])}
             self.window.after(0, lambda: self.display_videos(self.playlist_info['title'], self.playlist_info['entries']))
         except: pass
@@ -433,7 +444,14 @@ class YouTubeDownloader:
             self.path_entry.delete(0, "end")
             self.path_entry.insert(0, folder)
     def _add_cookie_options(self, ydl_opts):
-        ydl_opts['cookiesfrombrowser'] = ('edge',)
+        browsers = ['chrome', 'firefox', 'edge', 'opera', 'brave', 'safari']
+        for browser in browsers:
+            try:
+                ydl_opts['cookiesfrombrowser'] = (browser,)
+                break
+            except: pass
+        ydl_opts['user_agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ydl_opts['referer'] = 'https://www.youtube.com/'
     
     def _extract_video_id(self, url):
         try:
@@ -455,18 +473,29 @@ class YouTubeDownloader:
     def _fetch_preview_thread(self, url):
         try:
             video_id = self._extract_video_id(url)
-            ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'noplaylist': True, 'extractor_args': {'youtube': {'player_client': ['android']}}}
+            ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'noplaylist': True}
             self._add_cookie_options(ydl_opts)
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-            except Exception as e:
-                error_str = str(e).lower()
-                if 'cookie' in error_str or 'cookiesfrombrowser' in error_str or 'dpapi' in error_str or 'decrypt' in error_str or 'cookieloaderror' in error_str:
-                    ydl_opts.pop('cookiesfrombrowser', None)
+            player_clients = [['web'], ['android'], ['ios'], ['web', 'android']]
+            info = None
+            for clients in player_clients:
+                try:
+                    ydl_opts['extractor_args'] = {'youtube': {'player_client': clients}}
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         info = ydl.extract_info(url, download=False)
-                else: raise
+                    break
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if 'cookie' in error_str or 'cookiesfrombrowser' in error_str or 'dpapi' in error_str or 'decrypt' in error_str or 'cookieloaderror' in error_str:
+                        ydl_opts.pop('cookiesfrombrowser', None)
+                        try:
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                info = ydl.extract_info(url, download=False)
+                            break
+                        except: pass
+                    elif 'bot' in error_str or 'sign in' in error_str:
+                        continue
+                    elif info is None: raise
+            if info is None: raise Exception("Failed to extract video info")
             thumbnail_url = info.get('thumbnail', '') or (info.get('thumbnails', [{}])[0].get('url', '') if info.get('thumbnails') else '')
             title, duration, uploader, views = info.get('title', 'Unknown'), info.get('duration', 0), info.get('uploader', 'Unknown'), info.get('view_count', 0)
             duration_str = f"{duration // 60}:{duration % 60:02d}"
@@ -571,16 +600,27 @@ class YouTubeDownloader:
                     ydl_opts['format'] = f'best[height={height}][ext={ext}]/best[height={height}]/best' if height else 'best[ext=mp4]/best'
                 else: ydl_opts['format'] = 'best[ext=mp4]/best'
             else: ydl_opts['format'] = 'best[ext=mp4]/best'
-        try:
-            download_item.ydl = yt_dlp.YoutubeDL(ydl_opts)
-            info = download_item.ydl.extract_info(download_item.url, download=False)
-        except Exception as e:
-            error_str = str(e).lower()
-            if 'cookie' in error_str or 'cookiesfrombrowser' in error_str or 'dpapi' in error_str or 'decrypt' in error_str or 'cookieloaderror' in error_str:
-                ydl_opts.pop('cookiesfrombrowser', None)
+        player_clients = [['web'], ['android'], ['ios'], ['web', 'android']]
+        info = None
+        for clients in player_clients:
+            try:
+                ydl_opts['extractor_args'] = {'youtube': {'player_client': clients}}
                 download_item.ydl = yt_dlp.YoutubeDL(ydl_opts)
                 info = download_item.ydl.extract_info(download_item.url, download=False)
-            else: raise
+                break
+            except Exception as e:
+                error_str = str(e).lower()
+                if 'cookie' in error_str or 'cookiesfrombrowser' in error_str or 'dpapi' in error_str or 'decrypt' in error_str or 'cookieloaderror' in error_str:
+                    ydl_opts.pop('cookiesfrombrowser', None)
+                    try:
+                        download_item.ydl = yt_dlp.YoutubeDL(ydl_opts)
+                        info = download_item.ydl.extract_info(download_item.url, download=False)
+                        break
+                    except: pass
+                elif 'bot' in error_str or 'sign in' in error_str:
+                    continue
+                elif info is None and clients == player_clients[-1]: raise
+        if info is None: raise Exception("Failed to extract video info")
         filename = download_item.file_pattern.replace('%(title)s', info.get('title', 'Video')).replace('%(ext)s', info.get('ext', 'mp4')).replace('%(id)s', info.get('id', ''))
         download_item.file_path = os.path.join(download_item.download_path, filename)
         try:
