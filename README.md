@@ -6,6 +6,7 @@ A modern, feature-rich YouTube downloader with a Free Download Manager-style GUI
 
 - 🎥 **Video Downloads** - Download videos in multiple quality options (360p, 480p, 720p, 1080p, Best)
 - 🎵 **MP3 Downloads** - Quick MP3 conversion for single videos and batch downloads
+- 🔻 **Torrent Support** - Download torrents via magnet links or .torrent files (requires python-libtorrent)
 - 📋 **Playlist Support** - Select and download specific videos from playlists
 - ⚡ **Speed Control** - Customizable speed limits and speed modes (Normal, Slow, Moderate, Snail)
 - 📊 **Download Queue** - Manage multiple downloads with pause/resume/cancel/retry
@@ -54,12 +55,12 @@ pip install -r requirements.txt
 
 ### GUI Mode
 ```bash
-python youtube_downloader.py
+python Glitchoder.py
 ```
 
 ### CLI Mode
 ```bash
-python youtube_downloader.py <URL> [download_path]
+python Glitchoder.py <URL> [download_path]
 ```
 
 ## Features Overview
@@ -69,6 +70,12 @@ python youtube_downloader.py <URL> [download_path]
 2. Click "Preview" to see available qualities
 3. Select quality and click "Download"
 4. Or use "🎵 MP3" button for quick audio download
+
+### Torrent Download
+1. Paste magnet link or .torrent file URL (or local file path)
+2. Click "🔻 Torrent" button
+3. Torrent will be added to download queue
+4. Supports pause/resume/cancel like regular downloads
 
 ### Playlist Download
 1. Paste playlist URL
