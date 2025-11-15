@@ -136,10 +136,17 @@ class PlaylistSelectionWindow:
         try:
             ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': True, 'extractor_args': {'youtube': {'player_client': ['android']}}}
             self.app._add_cookie_options(ydl_opts)
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(self.playlist_url, download=False)
-                self.playlist_info = {'title': info.get('title', 'Playlist'), 'entries': info.get('entries', [])}
-                self.window.after(0, lambda: self.display_videos(self.playlist_info['title'], self.playlist_info['entries']))
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(self.playlist_url, download=False)
+            except Exception as e:
+                if 'cookie' in str(e).lower() or 'cookiesfrombrowser' in str(e).lower():
+                    ydl_opts.pop('cookiesfrombrowser', None)
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(self.playlist_url, download=False)
+                else: raise
+            self.playlist_info = {'title': info.get('title', 'Playlist'), 'entries': info.get('entries', [])}
+            self.window.after(0, lambda: self.display_videos(self.playlist_info['title'], self.playlist_info['entries']))
         except: pass
     
     def display_videos(self, playlist_title, entries):
@@ -424,7 +431,7 @@ class YouTubeDownloader:
             self.path_entry.delete(0, "end")
             self.path_entry.insert(0, folder)
     def _add_cookie_options(self, ydl_opts):
-        ydl_opts['cookiesfrombrowser'] = ('chrome',)
+        ydl_opts['cookiesfrombrowser'] = ('edge',)
     
     def _extract_video_id(self, url):
         try:
@@ -448,23 +455,30 @@ class YouTubeDownloader:
             video_id = self._extract_video_id(url)
             ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'noplaylist': True, 'extractor_args': {'youtube': {'player_client': ['android']}}}
             self._add_cookie_options(ydl_opts)
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                thumbnail_url = info.get('thumbnail', '') or (info.get('thumbnails', [{}])[0].get('url', '') if info.get('thumbnails') else '')
-                title, duration, uploader, views = info.get('title', 'Unknown'), info.get('duration', 0), info.get('uploader', 'Unknown'), info.get('view_count', 0)
-                duration_str = f"{duration // 60}:{duration % 60:02d}"
-                formats, available_formats = info.get('formats', []), self._parse_formats(formats)
-                thumbnail_image = None
-                if thumbnail_url:
-                    try:
-                        img = Image.open(BytesIO(requests.get(thumbnail_url, timeout=3, stream=False).content))
-                        img.thumbnail((300, 150), Image.Resampling.BILINEAR)
-                        thumbnail_image = ctk.CTkImage(light_image=img, dark_image=img, size=(300, 150))
-                    except: pass
-                if video_id:
-                    self.video_cache[video_id] = {'thumbnail_image': thumbnail_image, 'formats': available_formats, 'info': {'title': title, 'duration': duration_str, 'uploader': uploader, 'views': views}}
-                    if len(self.video_cache) > 10: del self.video_cache[next(iter(self.video_cache))]
-                self.root.after(0, lambda: self._update_preview({'thumbnail_image': thumbnail_image, 'formats': available_formats, 'info': {'title': title, 'duration': duration_str, 'uploader': uploader, 'views': views}}))
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+            except Exception as e:
+                if 'cookie' in str(e).lower() or 'cookiesfrombrowser' in str(e).lower():
+                    ydl_opts.pop('cookiesfrombrowser', None)
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(url, download=False)
+                else: raise
+            thumbnail_url = info.get('thumbnail', '') or (info.get('thumbnails', [{}])[0].get('url', '') if info.get('thumbnails') else '')
+            title, duration, uploader, views = info.get('title', 'Unknown'), info.get('duration', 0), info.get('uploader', 'Unknown'), info.get('view_count', 0)
+            duration_str = f"{duration // 60}:{duration % 60:02d}"
+            formats, available_formats = info.get('formats', []), self._parse_formats(formats)
+            thumbnail_image = None
+            if thumbnail_url:
+                try:
+                    img = Image.open(BytesIO(requests.get(thumbnail_url, timeout=3, stream=False).content))
+                    img.thumbnail((300, 150), Image.Resampling.BILINEAR)
+                    thumbnail_image = ctk.CTkImage(light_image=img, dark_image=img, size=(300, 150))
+                except: pass
+            if video_id:
+                self.video_cache[video_id] = {'thumbnail_image': thumbnail_image, 'formats': available_formats, 'info': {'title': title, 'duration': duration_str, 'uploader': uploader, 'views': views}}
+                if len(self.video_cache) > 10: del self.video_cache[next(iter(self.video_cache))]
+            self.root.after(0, lambda: self._update_preview({'thumbnail_image': thumbnail_image, 'formats': available_formats, 'info': {'title': title, 'duration': duration_str, 'uploader': uploader, 'views': views}}))
         except: pass
     
     def _update_preview(self, data):
@@ -554,8 +568,15 @@ class YouTubeDownloader:
                     ydl_opts['format'] = f'best[height={height}][ext={ext}]/best[height={height}]/best' if height else 'best[ext=mp4]/best'
                 else: ydl_opts['format'] = 'best[ext=mp4]/best'
             else: ydl_opts['format'] = 'best[ext=mp4]/best'
-        download_item.ydl = yt_dlp.YoutubeDL(ydl_opts)
-        info = download_item.ydl.extract_info(download_item.url, download=False)
+        try:
+            download_item.ydl = yt_dlp.YoutubeDL(ydl_opts)
+            info = download_item.ydl.extract_info(download_item.url, download=False)
+        except Exception as e:
+            if 'cookie' in str(e).lower() or 'cookiesfrombrowser' in str(e).lower():
+                ydl_opts.pop('cookiesfrombrowser', None)
+                download_item.ydl = yt_dlp.YoutubeDL(ydl_opts)
+                info = download_item.ydl.extract_info(download_item.url, download=False)
+            else: raise
         filename = download_item.file_pattern.replace('%(title)s', info.get('title', 'Video')).replace('%(ext)s', info.get('ext', 'mp4')).replace('%(id)s', info.get('id', ''))
         download_item.file_path = os.path.join(download_item.download_path, filename)
         try:
@@ -627,8 +648,17 @@ def download_from_cli(url, download_path=None):
         if 'youtu.be/' in url: url = f"https://www.youtube.com/watch?v={url.split('youtu.be/')[1].split('?')[0].split('&')[0]}"
         elif 'watch?v=' in url: url = f"https://www.youtube.com/watch?v={url.split('watch?v=')[1].split('&')[0].split('?')[0]}"
     ydl_opts = {'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'), 'format': 'best[ext=mp4]/best', 'noplaylist': True, 'concurrent_fragment_downloads': 4, 'http_chunk_size': 10485760}
-    ydl_opts['cookiesfrombrowser'] = ('chrome',)
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
+    browsers = ['edge', 'firefox', 'chrome', 'opera', 'brave', 'safari']
+    for browser in browsers:
+        try: ydl_opts['cookiesfrombrowser'] = (browser,); break
+        except: pass
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
+    except Exception as e:
+        if 'cookie' in str(e).lower() or 'cookiesfrombrowser' in str(e).lower():
+            ydl_opts.pop('cookiesfrombrowser', None)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
+        else: raise
 
 def main():
     if len(sys.argv) > 1: download_from_cli(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None); return
