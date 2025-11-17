@@ -13,12 +13,6 @@ import platform
 import re
 import json
 try:
-    import libtorrent as lt  # pyright: ignore[reportMissingImports]
-    TORRENT_AVAILABLE = True
-except ImportError:
-    TORRENT_AVAILABLE = False
-    lt = None  # type: ignore
-try:
     from tkinterdnd2 import DND_FILES, TkinterDnD  # type: ignore
     DND_AVAILABLE = True
 except ImportError:
@@ -31,13 +25,11 @@ ctk.set_default_color_theme("blue")
 SKY_BLUE, DARK_SKY_BLUE, LIGHT_SKY_BLUE, WHITE, LIGHT_GRAY, MEDIUM_GRAY, DARK_GRAY, BLUE_ACCENT = "#87CEEB", "#4682B4", "#B0E0E6", "#FFFFFF", "#F5F5F5", "#E0E0E0", "#808080", "#1E90FF"
 
 class DownloadItem:
-    def __init__(self, parent, url, title, quality, download_path, speed_limit=0, download_subtitles=False, file_pattern="%(title)s.%(ext)s", is_torrent=False, upload_limit=0):
-        self.url, self.title, self.quality, self.download_path, self.speed_limit, self.download_subtitles, self.file_pattern, self.is_torrent, self.upload_limit = url, title, quality, download_path, speed_limit, download_subtitles, file_pattern, is_torrent, upload_limit
+    def __init__(self, parent, url, title, quality, download_path, speed_limit=0, download_subtitles=False, file_pattern="%(title)s.%(ext)s"):
+        self.url, self.title, self.quality, self.download_path = url, title, quality, download_path
+        self.speed_limit, self.download_subtitles, self.file_pattern = speed_limit, download_subtitles, file_pattern
         self.status, self.progress, self.speed, self.downloaded, self.total = "Waiting", 0.0, 0, 0, 0
         self.frame, self.ydl, self.download_thread, self.paused, self.cancelled, self.file_path = None, None, None, False, False, None
-        self.torrent_session, self.torrent_handle = None, None
-        self.torrent_details_panel, self.details_visible = None, False
-        self.torrent_seeders, self.torrent_leechers, self.torrent_upload_speed = 0, 0, 0
         self.create_widgets(parent)
     
     def create_widgets(self, parent):
@@ -51,7 +43,7 @@ class DownloadItem:
         title_frame.pack(side="left", fill="both", expand=True)
         self.title_label = ctk.CTkLabel(title_frame, text=self.title[:50] + "..." if len(self.title) > 50 else self.title, font=ctk.CTkFont(size=11), anchor="w")
         self.title_label.pack(anchor="w")
-        detail_text = "Torrent" if self.is_torrent else f"Quality: {self.quality}"
+        detail_text = f"Quality: {self.quality}"
         self.details_label = ctk.CTkLabel(title_frame, text=detail_text, font=ctk.CTkFont(size=9), text_color="gray", anchor="w")
         self.details_label.pack(anchor="w")
         right_frame = ctk.CTkFrame(self.frame, fg_color="transparent")
@@ -78,96 +70,16 @@ class DownloadItem:
         self.open_location_btn = ctk.CTkButton(action_frame, text="📁 Open", width=70, height=24, font=ctk.CTkFont(size=9), command=self.open_location, fg_color=DARK_SKY_BLUE, hover_color=BLUE_ACCENT)
         self.open_location_btn.pack(side="left", padx=2)
         self.open_location_btn.pack_forget()
-        if self.is_torrent:
-            self.frame.bind("<Button-1>", lambda e: self.toggle_torrent_details())
-            for widget in [self.title_label, self.details_label, self.progress_label, self.speed_label, self.progress_bar]:
-                widget.bind("<Button-1>", lambda e: self.toggle_torrent_details())
     
-    def toggle_torrent_details(self):
-        if not self.is_torrent or not TORRENT_AVAILABLE: return
-        if self.details_visible:
-            if self.torrent_details_panel: self.torrent_details_panel.pack_forget()
-            self.details_visible = False
-        else:
-            if not self.torrent_details_panel: self.create_torrent_details_panel()
-            self.torrent_details_panel.pack(fill="x", padx=4, pady=(0, 2), after=self.frame)
-            self.details_visible = True
-            self.update_torrent_details()
-    
-    def create_torrent_details_panel(self):
-        parent = self.frame.master
-        self.torrent_details_panel = ctk.CTkFrame(parent)
-        stats_frame = ctk.CTkFrame(self.torrent_details_panel, fg_color="transparent")
-        stats_frame.pack(fill="x", padx=8, pady=8)
-        ctk.CTkLabel(stats_frame, text="Seeders:", font=ctk.CTkFont(size=10, weight="bold")).pack(side="left", padx=(0, 4))
-        self.seeders_label = ctk.CTkLabel(stats_frame, text="0", font=ctk.CTkFont(size=10), text_color=DARK_SKY_BLUE)
-        self.seeders_label.pack(side="left", padx=(0, 12))
-        ctk.CTkLabel(stats_frame, text="Leechers:", font=ctk.CTkFont(size=10, weight="bold")).pack(side="left", padx=(0, 4))
-        self.leechers_label = ctk.CTkLabel(stats_frame, text="0", font=ctk.CTkFont(size=10), text_color=DARK_SKY_BLUE)
-        self.leechers_label.pack(side="left", padx=(0, 12))
-        ctk.CTkLabel(stats_frame, text="↑ Upload:", font=ctk.CTkFont(size=10, weight="bold")).pack(side="left", padx=(0, 4))
-        self.upload_speed_label = ctk.CTkLabel(stats_frame, text="0 KB/s", font=ctk.CTkFont(size=10), text_color="#FF6B35")
-        self.upload_speed_label.pack(side="left", padx=(0, 12))
-        ctk.CTkLabel(stats_frame, text="↓ Download:", font=ctk.CTkFont(size=10, weight="bold")).pack(side="left", padx=(0, 4))
-        self.download_speed_label = ctk.CTkLabel(stats_frame, text="0 KB/s", font=ctk.CTkFont(size=10), text_color=DARK_SKY_BLUE)
-        self.download_speed_label.pack(side="left")
-        speed_control_frame = ctk.CTkFrame(self.torrent_details_panel)
-        speed_control_frame.pack(fill="x", padx=8, pady=(0, 8))
-        ctk.CTkLabel(speed_control_frame, text="Speed Limits:", font=ctk.CTkFont(size=10, weight="bold")).pack(anchor="w", padx=8, pady=(8, 4))
-        limits_input_frame = ctk.CTkFrame(speed_control_frame, fg_color="transparent")
-        limits_input_frame.pack(fill="x", padx=8, pady=(0, 8))
-        ctk.CTkLabel(limits_input_frame, text="↓ DL:", font=ctk.CTkFont(size=9)).pack(side="left", padx=(0, 4))
-        self.dl_limit_entry = ctk.CTkEntry(limits_input_frame, width=80, height=24, font=ctk.CTkFont(size=9), placeholder_text="MB/s")
-        self.dl_limit_entry.pack(side="left", padx=(0, 8))
-        self.dl_limit_entry.insert(0, str(self.speed_limit) if self.speed_limit > 0 else "")
-        ctk.CTkLabel(limits_input_frame, text="↑ UL:", font=ctk.CTkFont(size=9)).pack(side="left", padx=(0, 4))
-        self.ul_limit_entry = ctk.CTkEntry(limits_input_frame, width=80, height=24, font=ctk.CTkFont(size=9), placeholder_text="MB/s")
-        self.ul_limit_entry.pack(side="left", padx=(0, 8))
-        self.ul_limit_entry.insert(0, str(self.upload_limit) if self.upload_limit > 0 else "")
-        ctk.CTkButton(limits_input_frame, text="Apply", width=60, height=24, command=self.apply_speed_limits, font=ctk.CTkFont(size=9), fg_color="#4CAF50", hover_color="#45a049").pack(side="left")
-    
-    def apply_speed_limits(self):
-        try:
-            dl_limit = float(self.dl_limit_entry.get().strip() or "0")
-            ul_limit = float(self.ul_limit_entry.get().strip() or "0")
-            self.speed_limit = max(0, dl_limit)
-            self.upload_limit = max(0, ul_limit)
-            if self.torrent_handle:
-                if self.speed_limit > 0:
-                    self.torrent_handle.set_download_limit(int(self.speed_limit * 1024 * 1024))
-                else:
-                    self.torrent_handle.set_download_limit(0)
-                if self.upload_limit > 0:
-                    self.torrent_handle.set_upload_limit(int(self.upload_limit * 1024 * 1024))
-                else:
-                    self.torrent_handle.set_upload_limit(0)
-        except: pass
-    
-    def update_torrent_details(self):
-        if not self.is_torrent or not self.torrent_handle or not self.details_visible: return
-        try:
-            s = self.torrent_handle.status()
-            self.torrent_seeders = s.num_seeds
-            self.torrent_leechers = s.num_peers - s.num_seeds
-            self.torrent_upload_speed = s.upload_rate
-            self.seeders_label.configure(text=str(self.torrent_seeders))
-            self.leechers_label.configure(text=str(self.torrent_leechers))
-            ul_mb = self.torrent_upload_speed / 1024 / 1024
-            self.upload_speed_label.configure(text=f"{ul_mb:.2f} MB/s" if ul_mb >= 1 else f"{self.torrent_upload_speed / 1024:.0f} KB/s")
-            dl_mb = self.speed / 1024 / 1024
-            self.download_speed_label.configure(text=f"{dl_mb:.2f} MB/s" if dl_mb >= 1 else f"{self.speed / 1024:.0f} KB/s")
-        except: pass
     
     def pause_download(self):
         self.paused, self.status = True, "Paused"
         if self.ydl: self.ydl.stop()
-        if self.torrent_handle: self.torrent_handle.pause()
         self.update_status("Paused")
         self.pause_btn.pack_forget()
         self.resume_btn.pack(side="left", padx=2)
     def resume_download(self):
         self.paused, self.status = False, "Downloading"
-        if self.torrent_handle: self.torrent_handle.resume()
         self.update_status("Downloading")
         self.resume_btn.pack_forget()
         self.pause_btn.pack(side="left", padx=2)
@@ -175,9 +87,6 @@ class DownloadItem:
         self.cancelled, self.paused = True, False
         if self.ydl:
             try: self.ydl.cancel()
-            except: pass
-        if self.torrent_handle and self.torrent_session:
-            try: self.torrent_session.remove_torrent(self.torrent_handle)
             except: pass
         self.update_status("Cancelled")
         self.frame.pack_forget()
@@ -344,14 +253,6 @@ class SettingsWindow:
         custom_speed_entry.pack(side="left", padx=(0, 10))
         custom_speed_entry.bind("<KeyRelease>", lambda e: self.apply_custom_speed())
         ctk.CTkLabel(download_speed_frame, text="(0 = unlimited, overrides speed mode)", font=ctk.CTkFont(size=10), text_color="gray").pack(side="left")
-        upload_speed_frame = ctk.CTkFrame(custom_speed_frame, fg_color="transparent")
-        upload_speed_frame.pack(fill="x", padx=10, pady=(0, 10))
-        ctk.CTkLabel(upload_speed_frame, text="Upload:", font=ctk.CTkFont(size=11)).pack(side="left", padx=(0, 8))
-        self.custom_upload_var = ctk.StringVar(value="0")
-        custom_upload_entry = ctk.CTkEntry(upload_speed_frame, textvariable=self.custom_upload_var, width=120, height=32, font=ctk.CTkFont(size=11), placeholder_text="MB/s")
-        custom_upload_entry.pack(side="left", padx=(0, 10))
-        custom_upload_entry.bind("<KeyRelease>", lambda e: self.apply_custom_upload())
-        ctk.CTkLabel(upload_speed_frame, text="(0 = unlimited, for torrents)", font=ctk.CTkFont(size=10), text_color="gray").pack(side="left")
         concurrent_frame = ctk.CTkFrame(main_frame)
         concurrent_frame.pack(fill="x", padx=10, pady=10)
         ctk.CTkLabel(concurrent_frame, text="Maximum Concurrent Downloads", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(12, 8))
@@ -391,12 +292,6 @@ class SettingsWindow:
         speed = float(self.custom_speed_var.get() or "0")
         self.app.speed_limit_var.set(str(speed))
         if speed > 0: self.speed_mode_var.set("Normal")
-    def apply_custom_upload(self):
-        upload = float(self.custom_upload_var.get() or "0")
-        if not hasattr(self.app, 'upload_limit_var'):
-            self.app.upload_limit_var = ctk.StringVar(value=str(upload))
-        else:
-            self.app.upload_limit_var.set(str(upload))
     def apply_max_concurrent(self):
         max_val = max(1, min(10, int(self.max_concurrent_var.get() or "3")))
         self.max_concurrent_var.set(str(max_val))
@@ -412,11 +307,6 @@ class SettingsWindow:
                 self.speed_mode_var.set(settings.get('speed_mode', 'Normal'))
                 self.apply_speed_mode(self.speed_mode_var.get())
                 self.custom_speed_var.set(str(settings.get('custom_speed', '0')))
-                self.custom_upload_var.set(str(settings.get('custom_upload', '0')))
-                if not hasattr(self.app, 'upload_limit_var'):
-                    self.app.upload_limit_var = ctk.StringVar(value=str(settings.get('custom_upload', '0')))
-                else:
-                    self.app.upload_limit_var.set(str(settings.get('custom_upload', '0')))
                 max_concurrent = settings.get('max_concurrent', 3)
                 self.max_concurrent_var.set(str(max_concurrent))
                 self.app.max_concurrent_var.set(str(max_concurrent))
@@ -429,10 +319,9 @@ class SettingsWindow:
                 self.app.path_entry.delete(0, "end")
                 self.app.path_entry.insert(0, location)
     def save_settings(self):
-        settings = {'speed_mode': self.speed_mode_var.get(), 'custom_speed': self.custom_speed_var.get(), 'custom_upload': self.custom_upload_var.get(), 'max_concurrent': int(self.max_concurrent_var.get() or "3"), 'auto_start': self.auto_start_var.get(), 'default_location': self.default_location_var.get()}
+        settings = {'speed_mode': self.speed_mode_var.get(), 'custom_speed': self.custom_speed_var.get(), 'max_concurrent': int(self.max_concurrent_var.get() or "3"), 'auto_start': self.auto_start_var.get(), 'default_location': self.default_location_var.get()}
         with open(self.settings_file, 'w') as f: json.dump(settings, f, indent=2)
         self.apply_custom_speed()
-        self.apply_custom_upload()
         self.apply_max_concurrent()
         self.app.auto_start_var.set(self.auto_start_var.get())
         self.app.download_path = self.default_location_var.get()
@@ -458,7 +347,6 @@ class YouTubeDownloader:
             self.root.minsize(1000, 650)
             self.root.resizable(True, True)
         self.download_path, self.download_queue, self.active_downloads, self.video_cache, self.max_concurrent, self.auto_start = str(Path.home() / "Downloads"), [], {}, {}, 3, True
-        self.upload_limit_var = ctk.StringVar(value="0")
         self.create_toolbar()
         main_container = ctk.CTkFrame(self.root_window)
         main_container.pack(fill="both", expand=True, padx=4, pady=4)
@@ -509,10 +397,6 @@ class YouTubeDownloader:
         self.playlist_btn.pack_forget()
         self.mp3_btn = ctk.CTkButton(btn_frame, text="🎵 MP3", width=70, height=32, command=self.add_mp3_download, font=ctk.CTkFont(size=10, weight="bold"), fg_color="#9C27B0", hover_color="#7B1FA2")
         self.mp3_btn.pack(side="left", padx=4)
-        self.torrent_btn = ctk.CTkButton(btn_frame, text="🔻 Torrent", width=90, height=32, command=self.add_torrent_download, font=ctk.CTkFont(size=10, weight="bold"), fg_color="#FF6B35", hover_color="#E55A2B", state="normal" if TORRENT_AVAILABLE else "disabled")
-        self.torrent_btn.pack(side="left", padx=4)
-        self.torrent_file_btn = ctk.CTkButton(btn_frame, text="📁 Torrent File", width=110, height=32, command=self.browse_torrent_file, font=ctk.CTkFont(size=10, weight="bold"), fg_color="#FF6B35", hover_color="#E55A2B", state="normal" if TORRENT_AVAILABLE else "disabled")
-        self.torrent_file_btn.pack(side="left", padx=4)
         self.download_btn = ctk.CTkButton(btn_frame, text="Download", width=100, height=32, command=self.add_download, font=ctk.CTkFont(size=11, weight="bold"), fg_color=DARK_SKY_BLUE, hover_color=BLUE_ACCENT)
         self.download_btn.pack(side="left", padx=4)
     
@@ -598,14 +482,7 @@ class YouTubeDownloader:
             files = root_tk.splitlist(event.data)
             for file_path in files:
                 file_path = file_path.strip('{}')
-                if file_path.lower().endswith('.torrent'):
-                    self.url_entry.delete(0, "end")
-                    self.url_entry.insert(0, file_path)
-                    if TORRENT_AVAILABLE:
-                        self.add_torrent_download()
-                    else:
-                        messagebox.showwarning("Torrent Support", "Torrent support not available. Install python-libtorrent: pip install python-libtorrent")
-                elif 'youtube.com' in file_path or 'youtu.be' in file_path:
+                if 'youtube.com' in file_path or 'youtu.be' in file_path:
                     self.url_entry.delete(0, "end")
                     self.url_entry.insert(0, file_path)
                     self.add_download()
@@ -633,15 +510,6 @@ class YouTubeDownloader:
             elif 'watch?v=' in url: return url.split('watch?v=')[1].split('&')[0].split('?')[0]
         except: pass
         return None
-    
-    def _is_torrent_url(self, url):
-        if not url: return False
-        url = url.strip()
-        if url.startswith('magnet:'): return True
-        url_lower = url.lower()
-        if url_lower.endswith('.torrent'): return True
-        if os.path.exists(url) and os.path.isfile(url) and url_lower.endswith('.torrent'): return True
-        return False
     
     def preview_video(self):
         url = self.url_entry.get().strip()
@@ -734,11 +602,8 @@ class YouTubeDownloader:
     def add_download(self):
         url = self.url_entry.get().strip()
         if not url: return
-        if self._is_torrent_url(url) and TORRENT_AVAILABLE:
-            self.add_torrent_download()
-            return
         if not self._extract_video_id(url):
-            messagebox.showwarning("Invalid URL", "Please enter a valid YouTube URL or torrent file.")
+            messagebox.showwarning("Invalid URL", "Please enter a valid YouTube URL.")
             return
         video_id = self._extract_video_id(url)
         title = self.video_cache[video_id]['info'].get('title', 'Video') if video_id and video_id in self.video_cache else "Video"
@@ -761,44 +626,12 @@ class YouTubeDownloader:
         if self.auto_start_var.get(): self.start_download(download_item)
         self.url_entry.delete(0, "end")
     
-    def browse_torrent_file(self):
-        if not TORRENT_AVAILABLE:
-            messagebox.showwarning("Torrent Support", "Torrent support not available. Install python-libtorrent: pip install python-libtorrent")
-            return
-        file_path = filedialog.askopenfilename(title="Select Torrent File", filetypes=[("Torrent Files", "*.torrent"), ("All Files", "*.*")])
-        if file_path:
-            self.url_entry.delete(0, "end")
-            self.url_entry.insert(0, file_path)
-            self.add_torrent_download()
-    
-    def add_torrent_download(self):
-        url = self.url_entry.get().strip()
-        if not url or not TORRENT_AVAILABLE: return
-        url_abs = os.path.abspath(url) if os.path.exists(url) else url
-        url_normalized = url_abs.replace('\\', '/').strip()
-        if not self._is_torrent_url(url_normalized):
-            if os.path.exists(url_abs) and url_abs.lower().endswith('.torrent'):
-                url_normalized = url_abs.replace('\\', '/')
-            else:
-                messagebox.showwarning("Invalid Torrent", "Please enter a valid torrent file path or magnet link.")
-                return
-        title = url_normalized.split('/')[-1].split('?')[0] if '/' in url_normalized else url_normalized[:50]
-        if title.endswith('.torrent'): title = title[:-8]
-        elif url_normalized.startswith('magnet:'): title = url_normalized.split('&dn=')[1].split('&')[0] if '&dn=' in url_normalized else "Magnet Link"
-        upload_limit = float(getattr(self, 'upload_limit_var', ctk.StringVar(value="0")).get().strip() or "0")
-        download_item = DownloadItem(self.download_list_frame, url_normalized, title, "torrent", self.path_entry.get().strip() or self.download_path, float(self.speed_limit_var.get().strip() or "0"), False, "%(title)s", True, upload_limit)
-        download_item.app = self
-        self.download_queue.append(download_item)
-        if self.auto_start_var.get(): self.start_download(download_item)
-        self.url_entry.delete(0, "end")
-    
     def start_download(self, download_item):
         if sum(1 for item in self.download_queue if item.status == "Downloading") >= self.max_concurrent:
             download_item.update_status("Waiting")
             return
         download_item.update_status("Downloading")
-        target_func = self.download_torrent if download_item.is_torrent else self.download_video
-        download_item.download_thread = threading.Thread(target=target_func, args=(download_item,), daemon=True)
+        download_item.download_thread = threading.Thread(target=self.download_video, args=(download_item,), daemon=True)
         download_item.download_thread.start()
     
     def download_video(self, download_item):
@@ -851,62 +684,6 @@ class YouTubeDownloader:
             if not download_item.cancelled: download_item.update_status("Error")
         finally: download_item.ydl = None
     
-    def download_torrent(self, download_item):
-        if not TORRENT_AVAILABLE:
-            download_item.update_status("Error")
-            return
-        while download_item.paused and not download_item.cancelled: threading.Event().wait(0.5)
-        if download_item.cancelled: return
-        os.makedirs(download_item.download_path, exist_ok=True)
-        try:
-            ses = lt.session()
-            ses.listen_on(6881, 6891)
-            params = {'save_path': download_item.download_path, 'storage_mode': lt.storage_mode_t(2)}
-            torrent_url = download_item.url.replace('/', os.sep) if os.path.exists(download_item.url.replace('/', os.sep)) else download_item.url
-            if torrent_url.startswith('magnet:'):
-                handle = lt.add_magnet_uri(ses, torrent_url, params)
-            else:
-                if torrent_url.startswith('http'):
-                    torrent_data = requests.get(torrent_url, timeout=10).content
-                else:
-                    file_path = torrent_url.replace('/', os.sep) if '/' in torrent_url else torrent_url
-                    with open(file_path, 'rb') as f: torrent_data = f.read()
-                info = lt.torrent_info(lt.bdecode(torrent_data))
-                handle = ses.add_torrent({'ti': info, 'save_path': download_item.download_path})
-            download_item.torrent_session, download_item.torrent_handle = ses, handle
-            if download_item.speed_limit > 0:
-                handle.set_download_limit(int(download_item.speed_limit * 1024 * 1024))
-            if download_item.upload_limit > 0:
-                handle.set_upload_limit(int(download_item.upload_limit * 1024 * 1024))
-            while not handle.status().is_seeding and not download_item.cancelled:
-                while download_item.paused and not download_item.cancelled: threading.Event().wait(0.5)
-                if download_item.cancelled: break
-                s = handle.status()
-                if s.total_wanted > 0:
-                    progress = s.progress
-                    speed = s.download_rate
-                    downloaded = int(s.total_wanted * progress)
-                    total = s.total_wanted
-                    download_item.update_progress(progress, speed, downloaded, total)
-                    if download_item.details_visible:
-                        self.root.after(0, lambda: download_item.update_torrent_details())
-                    self.root.after(0, lambda: self.update_status_bar())
-                threading.Event().wait(1)
-            if not download_item.cancelled:
-                try:
-                    download_item.file_path = os.path.join(download_item.download_path, handle.status().name)
-                except:
-                    download_item.file_path = download_item.download_path
-                download_item.update_status("Completed")
-                self.root.after(0, lambda: self.update_status_bar())
-                waiting_items = [item for item in self.download_queue if item.status == "Waiting"]
-                if waiting_items: self.start_download(waiting_items[0])
-        except Exception as e:
-            if not download_item.cancelled: download_item.update_status("Error")
-        finally:
-            download_item.torrent_session = None
-            download_item.torrent_handle = None
-    
     def progress_hook(self, d, download_item):
         if download_item.cancelled: return
         while download_item.paused and not download_item.cancelled: threading.Event().wait(0.1)
@@ -954,8 +731,6 @@ class YouTubeDownloader:
             with open(settings_file, 'r') as f:
                 settings = json.load(f)
                 self.speed_limit_var.set(str(settings.get('custom_speed', '0')))
-                upload_limit = settings.get('custom_upload', '0')
-                self.upload_limit_var.set(str(upload_limit))
                 self.max_concurrent = settings.get('max_concurrent', 3)
                 self.max_concurrent_var.set(str(self.max_concurrent))
                 self.auto_start_var.set(settings.get('auto_start', True))
@@ -986,43 +761,8 @@ def download_from_cli(url, download_path=None):
 
 def main():
     if len(sys.argv) > 1:
-        url = sys.argv[1]
-        url_abs = os.path.abspath(url) if os.path.exists(url) else url
-        url_normalized = url_abs.replace('\\', '/').strip()
-        is_torrent = False
-        if url_normalized.lower().endswith('.torrent'):
-            is_torrent = True
-        elif url_normalized.startswith('magnet:'):
-            is_torrent = True
-        elif os.path.exists(url_abs) and os.path.isfile(url_abs):
-            if url_abs.lower().endswith('.torrent'):
-                is_torrent = True
-        if is_torrent:
-            if TORRENT_AVAILABLE:
-                if DND_AVAILABLE:
-                    root = TkinterDnD.Tk()
-                else:
-                    root = ctk.CTk()
-                app = YouTubeDownloader(root)
-                download_path = sys.argv[2] if len(sys.argv) > 2 else None
-                if download_path:
-                    app.download_path = download_path
-                    app.path_entry.delete(0, "end")
-                    app.path_entry.insert(0, download_path)
-                app.url_entry.delete(0, "end")
-                app.url_entry.insert(0, url_normalized)
-                root.update_idletasks()
-                root.lift()
-                try:
-                    root.attributes('-topmost', True)
-                    root.after(100, lambda: root.attributes('-topmost', False))
-                except: pass
-                app.root.after(500, lambda: app.add_torrent_download())
-                root.mainloop()
-            else:
-                print("Torrent support not available. Install python-libtorrent: pip install python-libtorrent")
-            return
-        download_from_cli(url, sys.argv[2] if len(sys.argv) > 2 else None)
+        url = sys.argv[1].strip('"\'')  # Remove quotes that Windows might add
+        download_from_cli(url, sys.argv[2].strip('"\'') if len(sys.argv) > 2 else None)
         return
     if DND_AVAILABLE:
         root = TkinterDnD.Tk()
